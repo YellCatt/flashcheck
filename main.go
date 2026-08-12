@@ -135,7 +135,7 @@ func runAutoTest(path string) {
 	runTests(path)
 
 	fmt.Println()
-	fmt.Print("是否进行原始扇区测试 (直接操作硬件，DANGER!)? [y/N]: ")
+	fmt.Print("是否进行原始扇区测试 (只读扫描，不写入数据)? [y/N]: ")
 	rawConfirm, _ := reader.ReadString('\n')
 	if strings.TrimSpace(strings.ToLower(rawConfirm)) == "y" {
 		runRawTest(path)
@@ -198,7 +198,7 @@ func runInteractive() {
 	runTests(targetPath)
 
 	fmt.Println()
-	fmt.Print("是否进行原始扇区测试 (直接操作硬件，DANGER!)? [y/N]: ")
+	fmt.Print("是否进行原始扇区测试 (只读扫描，不写入数据)? [y/N]: ")
 	rawConfirm, _ := reader.ReadString('\n')
 	if strings.TrimSpace(strings.ToLower(rawConfirm)) == "y" {
 		runRawTest(targetPath)
@@ -228,7 +228,7 @@ func manualPath() {
 	runTests(path)
 
 	fmt.Println()
-	fmt.Print("是否进行原始扇区测试 (直接操作硬件，DANGER!)? [y/N]: ")
+	fmt.Print("是否进行原始扇区测试 (只读扫描，不写入数据)? [y/N]: ")
 	reader2 := bufio.NewReader(os.Stdin)
 	rawConfirm, _ := reader2.ReadString('\n')
 	if strings.TrimSpace(strings.ToLower(rawConfirm)) == "y" {
@@ -481,9 +481,9 @@ func testBadBlocks(path string) (bad, total int) {
 func runRawTest(mountPath string) {
 	fmt.Println()
 	fmt.Println(strings.Repeat("!", 50))
-	fmt.Println("  警告: 原始扇区测试将直接写入硬件!")
-	fmt.Println("  这将破坏设备上的所有数据，且不可恢复!")
-	fmt.Println("  请确保已选择正确的设备！")
+	fmt.Println("  警告: 原始扇区测试将直接读取硬件扇区!")
+	fmt.Println("  本测试为只读模式，不会写入数据。")
+	fmt.Println("  需要管理员/root权限访问原始设备。")
 	fmt.Println(strings.Repeat("!", 50))
 
 	reader := bufio.NewReader(os.Stdin)
@@ -574,7 +574,7 @@ func printRawReport(r *RawTestResult) {
 	fmt.Printf("耗时:        %s\n", r.TestDuration.Round(time.Second))
 	fmt.Println(strings.Repeat("-", 50))
 	fmt.Printf("损坏扇区:    %d / %d (%.2f%%)\n", r.BadSectors, r.SectorsTested, float64(r.BadSectors)/float64(max(1, r.SectorsTested))*100)
-	fmt.Printf("写入模式:    %s\n", r.PatternDesc)
+	fmt.Printf("扫描方式:    %s\n", r.PatternDesc)
 	fmt.Println(strings.Repeat("=", 50))
 
 	if r.BadSectors == 0 {

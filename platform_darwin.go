@@ -184,7 +184,7 @@ func rawSectorTest(mountPath string) (*RawTestResult, error) {
 
 	fmt.Printf("  原始设备: %s\n", rawPath)
 
-	f, err := os.OpenFile(rawPath, os.O_RDWR, 0)
+	f, err := os.OpenFile(rawPath, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, fmt.Errorf("无法打开原始设备 (需要root权限): %v", err)
 	}
@@ -214,32 +214,13 @@ func rawSectorTest(mountPath string) (*RawTestResult, error) {
 
 	for sec := 0; sec < totalSectors; sec++ {
 		offset := int64(sec) * int64(sectorSize)
-		pattern := generateSectorPattern(sec, sectorSize)
-
-		_, err := f.WriteAt(pattern, offset)
-		if err != nil {
-			atomic.AddInt32(&badSectors, 1)
-			fmt.Printf("  ⚠ 扇区 %d 写入错误: %v\n", sec, err)
-			continue
-		}
 
 		readBuf := make([]byte, sectorSize)
-		_, err = f.ReadAt(readBuf, offset)
+		_, err := f.ReadAt(readBuf, offset)
 		if err != nil {
 			atomic.AddInt32(&badSectors, 1)
 			fmt.Printf("  ⚠ 扇区 %d 读取错误: %v\n", sec, err)
 			continue
-		}
-
-		match := true
-		for j := 0; j < sectorSize; j++ {
-			if readBuf[j] != pattern[j] {
-				match = false
-				break
-			}
-		}
-		if !match {
-			atomic.AddInt32(&badSectors, 1)
 		}
 
 		if (sec+1)%100 == 0 {
@@ -254,7 +235,7 @@ func rawSectorTest(mountPath string) (*RawTestResult, error) {
 		SectorsTested: totalSectors,
 		BadSectors:    int(atomic.LoadInt32(&badSectors)),
 		SectorSize:    sectorSize,
-		PatternDesc:   "基于扇区索引的递增字节模式",
+		PatternDesc:   "只读扫描（无写入）",
 	}, nil
 }
 
