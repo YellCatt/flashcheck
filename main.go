@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -302,6 +303,7 @@ func testSequential(path string) (write, read float64) {
 		return 0, 0
 	}
 	_, err = f.Write(data)
+	f.Sync()
 	f.Close()
 	if err != nil {
 		fmt.Printf("  ✗ 写入失败: %v\n", err)
@@ -310,15 +312,27 @@ func testSequential(path string) (write, read float64) {
 	write = float64(len(data)) / 1024 / 1024 / time.Since(start).Seconds()
 
 	start = time.Now()
-	f, err = os.Open(testFile)
+	fs, err := openFileDirectRead(testFile)
 	if err != nil {
+		fmt.Printf("  ✗ 直接读取打开失败: %v\n", err)
 		return write, 0
 	}
-	buf := make([]byte, len(data))
-	_, err = io.ReadFull(f, buf)
-	f.Close()
-	if err != nil {
-		return write, 0
+	defer fs.Close()
+
+	chunkSize := 4 * 1024 * 1024
+	remain := len(data)
+	buf := alignedBuffer(chunkSize, 4096)
+	for remain > 0 {
+		n := chunkSize
+		if remain < n {
+			n = remain
+		}
+		_, err := io.ReadFull(fs, buf[:n])
+		if err != nil {
+			fmt.Printf("  ✗ 直接读取失败: %v\n", err)
+			return write, 0
+		}
+		remain -= n
 	}
 	read = float64(len(data)) / 1024 / 1024 / time.Since(start).Seconds()
 
@@ -327,10 +341,10 @@ func testSequential(path string) (write, read float64) {
 
 func testRandom(path string) (write, read float64) {
 	testFile := filepath.Join(path, testFileName+"_rand")
-	size := 16 * 1024 * 1024
 	blockSize := 4 * 1024
+	size := 16 * 1024 * 1024
 
-	f, err := os.OpenFile(testFile, os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile(testFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Printf("  ✗ 无法创建测试文件: %v\n", err)
 		return 0, 0
@@ -352,16 +366,30 @@ func testRandom(path string) (write, read float64) {
 		f.WriteAt(block, pos)
 	}
 	f.Sync()
+	f.Close()
 	write = float64(count*blockSize) / 1024 / 1024 / time.Since(start).Seconds()
 
-	readBuf := make([]byte, blockSize)
+	fs, err := openFileDirectRead(testFile)
+	if err != nil {
+		fmt.Printf("  ✗ 直接读取打开失败: %v\n", err)
+		return write, 0
+	}
+	defer fs.Close()
+
+	readBuf := alignedBuffer(blockSize, 4096)
+
 	start = time.Now()
 	for _, pos := range positions {
-		f.ReadAt(readBuf, pos)
+		_, err := fs.ReadAt(readBuf[:blockSize], pos)
+		if err != nil {
+			fmt.Printf("  ✗ 直接随机读取失败: %v\n", err)
+			fs.Close()
+			return write, 0
+		}
 	}
 	read = float64(count*blockSize) / 1024 / 1024 / time.Since(start).Seconds()
 
-	f.Close()
+	fs.Close()
 	return write, read
 }
 
@@ -627,6 +655,16 @@ func randIntn(n int) int {
 		return 0
 	}
 	return rand.Intn(n)
+}
+
+func alignedBuffer(size, align int) []byte {
+	buf := make([]byte, size+align)
+	a := uintptr(align)
+	offset := a - (uintptr(unsafe.Pointer(&buf[0])) % a)
+	if int(offset) == align {
+		offset = 0
+	}
+	return buf[offset : offset+uintptr(size)]
 }
 
 func randPerm(n int) []int {

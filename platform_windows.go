@@ -15,10 +15,22 @@ import (
 	"unsafe"
 )
 
+const (
+	FILE_FLAG_NO_BUFFERING    = 0x20000000
+	FILE_FLAG_SEQUENTIAL_SCAN = 0x08000000
+	GENERIC_READ              = 0x80000000
+	FILE_SHARE_READ           = 0x00000001
+	FILE_SHARE_WRITE          = 0x00000002
+	OPEN_EXISTING             = 3
+	INVALID_HANDLE_VALUE      = ^uintptr(0)
+)
+
 var (
 	kernel32                = syscall.NewLazyDLL("kernel32.dll")
 	procGetDiskFreeSpaceExW = kernel32.NewProc("GetDiskFreeSpaceExW")
 	procGetDiskFreeSpaceW   = kernel32.NewProc("GetDiskFreeSpaceW")
+	procCreateFileW         = kernel32.NewProc("CreateFileW")
+	procCloseHandle         = kernel32.NewProc("CloseHandle")
 )
 
 func getExecutableDrivePath() (string, error) {
@@ -38,6 +50,53 @@ func getExecutableDrivePath() (string, error) {
 
 	drive := strings.ToUpper(exe[:2]) + "\\"
 	return drive, nil
+}
+
+func openFileDirectRead(path string) (*os.File, error) {
+	p, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, fmt.Errorf("路径转换失败: %v", err)
+	}
+	handle, _, err := procCreateFileW.Call(
+		uintptr(unsafe.Pointer(p)),
+		uintptr(GENERIC_READ),
+		uintptr(FILE_SHARE_READ|FILE_SHARE_WRITE),
+		0,
+		uintptr(OPEN_EXISTING),
+		uintptr(FILE_FLAG_NO_BUFFERING|FILE_FLAG_SEQUENTIAL_SCAN),
+		0,
+	)
+	if handle == INVALID_HANDLE_VALUE {
+		return nil, fmt.Errorf("CreateFileW 失败: %v", err)
+	}
+	return os.NewFile(handle, path), nil
+}
+
+func getVolumeSectorSize(path string) int {
+	root := path
+	if len(root) < 2 || root[1] != ':' {
+		return 512
+	}
+	if !strings.HasSuffix(root, "\\") {
+		root = root[:2] + "\\"
+	}
+
+	var bytesPerSector uint32
+	var sectorsPerCluster uint32
+	var freeClusters uint32
+	var totalClusters uint32
+
+	ret, _, _ := procGetDiskFreeSpaceW.Call(
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(root))),
+		uintptr(unsafe.Pointer(&sectorsPerCluster)),
+		uintptr(unsafe.Pointer(&bytesPerSector)),
+		uintptr(unsafe.Pointer(&freeClusters)),
+		uintptr(unsafe.Pointer(&totalClusters)),
+	)
+	if ret != 0 && bytesPerSector > 0 {
+		return int(bytesPerSector)
+	}
+	return 512
 }
 
 func listRemovableDevices() ([]DeviceInfo, error) {

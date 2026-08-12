@@ -49,6 +49,14 @@ func getExecutableDrivePath() (string, error) {
 	return exeDir, nil
 }
 
+func openFileDirectRead(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_DIRECT, 0)
+}
+
+func getVolumeSectorSize(path string) int {
+	return 512
+}
+
 func listRemovableDevices() ([]DeviceInfo, error) {
 	cmd := exec.Command("lsblk", "-J", "-b", "-o", "NAME,SIZE,MOUNTPOINT,TYPE,RM,MODEL,FSTYPE")
 	out, err := cmd.Output()

@@ -48,6 +48,23 @@ func getExecutableDrivePath() (string, error) {
 	return exeDir, nil
 }
 
+func openFileDirectRead(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, f.Fd(), syscall.F_NOCACHE, 1)
+	if errno != 0 {
+		f.Close()
+		return nil, errno
+	}
+	return f, nil
+}
+
+func getVolumeSectorSize(path string) int {
+	return 512
+}
+
 func listRemovableDevices() ([]DeviceInfo, error) {
 	cmd := exec.Command("diskutil", "list", "-external", "-plist")
 	out, err := cmd.Output()
