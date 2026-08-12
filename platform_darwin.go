@@ -14,6 +14,40 @@ import (
 	"syscall"
 )
 
+func getExecutableDrivePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("获取可执行文件路径失败: %v", err)
+	}
+
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("解析可执行文件路径失败: %v", err)
+	}
+
+	exeDir := filepath.Dir(exe)
+
+	var prevDev uint64
+	for {
+		var stat syscall.Stat_t
+		if err := syscall.Stat(exeDir, &stat); err != nil {
+			break
+		}
+		dev := uint64(stat.Dev)
+		if prevDev != 0 && dev != prevDev {
+			break
+		}
+		prevDev = dev
+
+		parent := filepath.Dir(exeDir)
+		if parent == exeDir {
+			break
+		}
+		exeDir = parent
+	}
+	return exeDir, nil
+}
+
 func listRemovableDevices() ([]DeviceInfo, error) {
 	cmd := exec.Command("diskutil", "list", "-external", "-plist")
 	out, err := cmd.Output()

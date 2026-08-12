@@ -62,6 +62,87 @@ func main() {
 	fmt.Println("警告: 测试将写入临时文件，请确保卡内数据已备份！")
 	fmt.Println()
 
+	mode := "auto"
+	customPath := ""
+
+	for _, arg := range os.Args[1:] {
+		if arg == "-i" || arg == "--interactive" {
+			mode = "interactive"
+		} else if arg == "-h" || arg == "--help" {
+			printUsage()
+			return
+		} else if strings.HasPrefix(arg, "-path=") {
+			customPath = strings.TrimPrefix(arg, "-path=")
+			mode = "custom"
+		} else if strings.HasPrefix(arg, "--path=") {
+			customPath = strings.TrimPrefix(arg, "--path=")
+			mode = "custom"
+		}
+	}
+
+	switch mode {
+	case "interactive":
+		runInteractive()
+	case "custom":
+		if customPath == "" {
+			fmt.Println("错误: 未指定路径")
+			printUsage()
+			return
+		}
+		runAutoTest(customPath)
+	default:
+		exePath, err := getExecutableDrivePath()
+		if err != nil {
+			fmt.Printf("自动检测失败: %v\n", err)
+			fmt.Println("回退到交互模式...")
+			runInteractive()
+			return
+		}
+		runAutoTest(exePath)
+	}
+}
+
+func printUsage() {
+	fmt.Printf("用法: %s [选项]\n", os.Args[0])
+	fmt.Println()
+	fmt.Println("选项:")
+	fmt.Println("  (无参数)         自动检测当前可执行文件所在的存储设备并测试")
+	fmt.Println("  -i, --interactive 交互模式，手动选择设备")
+	fmt.Println("  -path <路径>     指定要测试的路径")
+	fmt.Println("  -h, --help       显示帮助信息")
+}
+
+func runAutoTest(path string) {
+	capacity, free, err := getDiskUsage(path)
+	if err != nil {
+		fmt.Printf("无法访问路径 %s: %v\n", path, err)
+		fmt.Println("提示: 如需手动选择设备，请使用 -i 参数")
+		return
+	}
+
+	fmt.Printf("已自动检测到存储设备: %s\n", path)
+	fmt.Printf("  总容量: %s\n", formatBytes(capacity))
+	fmt.Printf("  可用空间: %s\n", formatBytes(free))
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("\n确认开始测试? 数据可能丢失! [y/N]: ")
+	confirm, _ := reader.ReadString('\n')
+	if strings.TrimSpace(strings.ToLower(confirm)) != "y" {
+		fmt.Println("已取消")
+		return
+	}
+
+	runTests(path)
+
+	fmt.Println()
+	fmt.Print("是否进行原始扇区测试 (直接操作硬件，DANGER!)? [y/N]: ")
+	rawConfirm, _ := reader.ReadString('\n')
+	if strings.TrimSpace(strings.ToLower(rawConfirm)) == "y" {
+		runRawTest(path)
+	}
+}
+
+func runInteractive() {
 	devices, err := listRemovableDevices()
 	if err != nil {
 		fmt.Printf("获取设备列表失败: %v\n", err)

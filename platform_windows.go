@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -19,6 +20,25 @@ var (
 	procGetDiskFreeSpaceExW = kernel32.NewProc("GetDiskFreeSpaceExW")
 	procGetDiskFreeSpaceW   = kernel32.NewProc("GetDiskFreeSpaceW")
 )
+
+func getExecutableDrivePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("获取可执行文件路径失败: %v", err)
+	}
+
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("解析可执行文件路径失败: %v", err)
+	}
+
+	if len(exe) < 2 || exe[1] != ':' {
+		return "", fmt.Errorf("无法识别的Windows路径: %s", exe)
+	}
+
+	drive := strings.ToUpper(exe[:2]) + "\\"
+	return drive, nil
+}
 
 func listRemovableDevices() ([]DeviceInfo, error) {
 	cmd := exec.Command("wmic", "logicaldisk", "get", "DeviceID,VolumeName,Size,DriveType", "/format:csv")
