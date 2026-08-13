@@ -92,14 +92,7 @@ func main() {
 		}
 		runAutoTest(customPath)
 	default:
-		exePath, err := getExecutableDrivePath()
-		if err != nil {
-			fmt.Printf("自动检测失败: %v\n", err)
-			fmt.Println("回退到交互模式...")
-			runInteractive()
-			return
-		}
-		runAutoTest(exePath)
+		runInteractive()
 	}
 }
 
@@ -107,10 +100,42 @@ func printUsage() {
 	fmt.Printf("用法: %s [选项]\n", os.Args[0])
 	fmt.Println()
 	fmt.Println("选项:")
-	fmt.Println("  (无参数)         自动检测当前可执行文件所在的存储设备并测试")
+	fmt.Println("  (无参数)         交互模式，列出可移动设备供选择")
 	fmt.Println("  -i, --interactive 交互模式，手动选择设备")
 	fmt.Println("  -path <路径>     指定要测试的路径")
 	fmt.Println("  -h, --help       显示帮助信息")
+}
+
+func checkSameDrive(targetPath string) bool {
+	exePath, err := getExecutableDrivePath()
+	if err != nil {
+		return false
+	}
+
+	exeAbs, _ := filepath.Abs(exePath)
+	targetAbs, _ := filepath.Abs(targetPath)
+
+	var sameDrive bool
+	if runtime.GOOS == "windows" {
+		if len(exeAbs) >= 2 && len(targetAbs) >= 2 && exeAbs[1] == ':' && targetAbs[1] == ':' {
+			sameDrive = strings.EqualFold(exeAbs[:2], targetAbs[:2])
+		}
+	} else {
+		exeAbs = filepath.Clean(exeAbs)
+		targetAbs = filepath.Clean(targetAbs)
+		sameDrive = strings.HasPrefix(targetAbs, exeAbs+string(os.PathSeparator)) ||
+			strings.HasPrefix(exeAbs, targetAbs+string(os.PathSeparator)) ||
+			targetAbs == exeAbs
+	}
+
+	if sameDrive {
+		fmt.Println()
+		fmt.Println(strings.Repeat("!", 50))
+		fmt.Println("  警告: 不允许对程序自身所在的磁盘进行检测!")
+		fmt.Println("  请将本程序放到其他磁盘上运行，然后再检测目标磁盘。")
+		fmt.Println(strings.Repeat("!", 50))
+	}
+	return sameDrive
 }
 
 func runAutoTest(path string) {
@@ -124,6 +149,10 @@ func runAutoTest(path string) {
 	fmt.Printf("已自动检测到存储设备: %s\n", path)
 	fmt.Printf("  总容量: %s\n", formatBytes(capacity))
 	fmt.Printf("  可用空间: %s\n", formatBytes(free))
+
+	if checkSameDrive(path) {
+		return
+	}
 
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("\n确认开始测试? 数据可能丢失! [y/N]: ")
@@ -189,6 +218,10 @@ func runInteractive() {
 	fmt.Println()
 	fmt.Printf("已选择: %s\n", targetPath)
 
+	if checkSameDrive(targetPath) {
+		return
+	}
+
 	fmt.Print("确认开始测试? 数据可能丢失! [y/N]: ")
 	confirm, _ := reader.ReadString('\n')
 	if strings.TrimSpace(strings.ToLower(confirm)) != "y" {
@@ -224,6 +257,9 @@ func manualPath() {
 		path = defaultPath
 	}
 	if path == "" {
+		return
+	}
+	if checkSameDrive(path) {
 		return
 	}
 	runTests(path)
